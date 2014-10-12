@@ -47,8 +47,8 @@ scheduleCallbacks promise = do
 processCallbacks :: IORef [a -> IO b] -> a -> IO ()
 processCallbacks cbRef arg = do
     cbs <- readIORef cbRef
-    forM_ cbs ($ arg)
     writeIORef cbRef []
+    forM_ cbs ($ arg)
 
 accept :: Resolver result err -> result -> IO ()
 accept resolver result = do

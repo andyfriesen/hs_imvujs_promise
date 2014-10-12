@@ -40,7 +40,7 @@ main = defaultMain $ testGroup "Tests"
         (promise, resolver) <- mkPromise
         (accepts, acceptCallback) <- mkAcceptor
 
-        then_ promise acceptCallback undefined
+        then2 promise acceptCallback
         accept resolver "Hello"
 
         assertIORefEqual "Accepted" ["Hello"] accepts
@@ -49,14 +49,14 @@ main = defaultMain $ testGroup "Tests"
         (accepts, acceptCallback) <- mkAcceptor
 
         accept resolver "Hello"
-        then_ promise acceptCallback undefined
+        then2 promise acceptCallback
 
         assertIORefEqual "Accepted" ["Hello"] accepts
     , testCase "reject after then" $ do
         (promise, resolver) <- mkPromise
         (rejects, rejectCallback) <- mkRejector
 
-        then_ promise undefined rejectCallback
+        catch promise rejectCallback
         reject resolver "Bye"
 
         assertIORefEqual "Rejected" ["Bye"] rejects
@@ -64,7 +64,7 @@ main = defaultMain $ testGroup "Tests"
     , testCase "second accept is ignored" $ do
         (promise, resolver) <- mkPromise
         (accepts,  acceptCallback) <- mkAcceptor
-        then_ promise acceptCallback undefined
+        then2 promise acceptCallback
         accept resolver "Hello"
         accept resolver "Two"
 
@@ -75,7 +75,7 @@ main = defaultMain $ testGroup "Tests"
         (p2, r2) <- mkPromise
         (accepts, acceptCallback) <- mkAcceptor
 
-        then_ promise acceptCallback undefined
+        then2 promise acceptCallback
         resolve resolver p2
 
         assertIORefEqual "No calls yet" [] accepts
@@ -102,9 +102,31 @@ main = defaultMain $ testGroup "Tests"
     , testCase "then chained to catch" $ do
         p <- acceptedPromise "value"
         result <- newIORef Nothing
-        p2 <- p `then2` (\value -> return $ Failure value)
-        p3 <- p2 `catch` (\error -> writeIORef result (Just error) >> return (Failure ()))
+        -- p2 <- p `then2` (\value -> return $ Failure value)
+        -- p3 <- p2 `catch` (\error -> writeIORef result (Just error) >> return (Failure ()))
+        p `then2` (\value -> return $ Failure value) >>=
+         (`catch` (\error -> writeIORef result (Just error) >> return (Failure ())))
 
         r <- readIORef result
         assertIORefEqual "error was called" (Just "value") result
+
+    , testCase "does not trip reentrancy" $ do
+        (promise, resolver) <- mkPromise
+        c <- newIORef (0 :: Integer)
+        reentrant <- newIORef False
+
+        let fxn () = do
+                modifyIORef c (+1)
+                then2 promise $ \() -> do
+                    c' <- readIORef c
+                    when (c' > 1) $ writeIORef reentrant True
+                    return $ Success ()
+                writeIORef c 0
+                return $ Success ()
+
+        then2 promise fxn
+        then2 promise fxn
+        accept resolver ()
+
+        assertIORefEqual "Did not reenter" False reentrant
     ]
