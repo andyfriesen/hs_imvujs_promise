@@ -5,6 +5,9 @@ module Promise where
 import Control.Monad
 import Data.IORef
 import Data.Maybe
+import Data.Default
+import Data.List (sortBy)
+import qualified Data.HashMap.Strict as HM
 
 data Status
     = Pending
@@ -154,3 +157,42 @@ catch promise rejectCb = do
 
         value <- readIORef pValue
         when (isJust value) $ scheduleCallbacks promise
+
+any :: Default result => [Promise result err] -> IO (Promise result err)
+any [] = acceptedPromise def
+any promises = newPromise $ \resolver -> do
+    let acceptCb result = do
+            accept resolver result
+            return $ Success result
+        rejectCb result = do
+            reject resolver result
+            return $ Failure result
+    forM_ promises $ \promise -> then_ promise acceptCb rejectCb
+
+every :: [Promise a err] -> IO (Promise [a] err)
+every [] = acceptedPromise []
+every promises = newPromise $ \resolver -> do
+    countdown <- newIORef (length promises)
+    args <- newIORef HM.empty
+
+    let rejectCb result = do
+            reject resolver result
+            return $ Failure result
+
+    let enumerate :: [a] -> [(Int, a)]
+        enumerate someList = zip [0..] someList
+
+    forM_ (enumerate promises) $ \(index, promise) -> do
+        let acceptCb result = do
+                modifyIORef countdown (\i -> i - 1)
+                modifyIORef args (HM.insert index result)
+                cd <- readIORef countdown
+                if (0 == cd) then do
+                    a <- readIORef args
+                    let ordered = snd $ unzip $ sortBy (\a b -> compare (fst a) (fst b)) $ HM.toList a
+                    accept resolver ordered
+                    return $ Success ordered
+                else
+                    return $ Success def -- ?????
+
+        then_ promise acceptCb rejectCb

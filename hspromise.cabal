@@ -20,9 +20,11 @@ executable hspromise
   -- other-modules:       
   -- other-extensions:    
 
-  build-depends: base >=4.7 && <4.8
+  build-depends: base >=4.6
                , tasty
                , tasty-hunit
+               , data-default
+               , unordered-containers
 
   -- hs-source-dirs:      
   default-language:    Haskell2010
