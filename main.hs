@@ -113,7 +113,7 @@ main = defaultMain $ testGroup "Tests"
 
         , testCase "does not trip reentrancy" $ do
             (promise, resolver) <- mkPromise
-            c <- newIORef (0 :: Integer)
+            c <- newIORef (0 :: Int)
             reentrant <- newIORef False
 
             let fxn () = do
@@ -135,7 +135,7 @@ main = defaultMain $ testGroup "Tests"
         [ testCase "any empty yields default" $ do
             (accepts, acceptCallback) <- mkAcceptor
             Promise.any [] >>= (`then2` acceptCallback)
-            assertIORefEqual "Produced something" [0::Integer] accepts
+            assertIORefEqual "Produced something" [0::Int] accepts
 
         , testCase "one reject, one accept" $ do
             (accepts, acceptCallback) <- mkAcceptor
@@ -145,10 +145,70 @@ main = defaultMain $ testGroup "Tests"
             (p2, r2) <- mkPromise
             pa <- Promise.any [p1, p2]
             then_ pa acceptCallback rejectCallback
-            reject r1 (1 :: Integer)
-            accept r2 (2 :: Integer)
+            reject r1 (1 :: Int)
+            accept r2 (2 :: Int)
 
             assertIORefEqual "Was not accepted" [] accepts
             assertIORefEqual "Was rejected" [1] rejects
+        ]
+    , testGroup "every"
+        [ testCase "rejection passes through" $ do
+            (p1, r1) <- mkPromise
+            (p2, r2) <- mkPromise
+            (accepts, acceptCallback) <- mkAcceptor
+            (rejects, rejectCallback) <- mkRejector
+
+            pe <- Promise.every [p1, p2]
+            then_ pe acceptCallback rejectCallback
+
+            reject r1 (1 :: Int)
+            accept r2 (2 :: Int)
+
+            assertIORefEqual "Should not be accepted" [] accepts
+            assertIORefEqual "Should be rejected" [1] rejects
+
+        , testCase "produces a list of results" $ do
+            (p1, r1) <- mkPromise
+            (p2, r2) <- mkPromise
+            (accepts, acceptCallback) <- mkAcceptor
+            (rejects, rejectCallback) <- mkRejector
+
+            pe <- Promise.every [p1, p2]
+            then_ pe acceptCallback rejectCallback
+
+            accept r1 (1 :: Int)
+            accept r2 (2 :: Int)
+
+            assertIORefEqual "Should be accepted" [[1, 2]] accepts
+            assertIORefEqual "Should not be rejected" ([] :: [Int]) rejects
+        ]
+
+    , testGroup "some"
+        [ testCase "one accept returns" $ do
+            (p1, r1) <- mkPromise
+            (p2, r2) <- mkPromise
+            (accepts, acceptCallback) <- mkAcceptor
+            (rejects, rejectCallback) <- mkRejector
+
+            ps <- some [p1, p2]
+            then_ ps acceptCallback rejectCallback
+            accept r2 (2 :: Int)
+
+            assertIORefEqual "Accepted" [2] accepts
+            assertIORefEqual "Rejected" ([] :: [[Int]]) rejects
+
+        , testCase "all rejections returns list" $ do
+            (p1, r1) <- mkPromise
+            (p2, r2) <- mkPromise
+            (accepts, acceptCallback) <- mkAcceptor
+            (rejects, rejectCallback) <- mkRejector
+
+            ps <- some [p1, p2]
+            then_ ps acceptCallback rejectCallback
+            reject r1 (1 :: Int)
+            reject r2 (2 :: Int)
+
+            assertIORefEqual "Accepted" ([] :: [[Int]]) accepts
+            assertIORefEqual "Rejected" [[1, 2]] rejects
         ]
     ]
